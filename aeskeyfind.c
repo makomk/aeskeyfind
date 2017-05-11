@@ -1,6 +1,6 @@
 // AESKeyFinder 1.0 (2008-07-18)
 // By Nadia Heninger and Ariel Feldman
-// Hacked by Aidan Thornton to know more key schedules
+// Hacked 2017-05-11 by Aidan Thornton to know more key schedules
 // With code from axTLS by Cameron Rich
 
 #include <stdio.h>
