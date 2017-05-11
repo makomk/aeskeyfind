@@ -1,5 +1,7 @@
 // AESKeyFinder 1.0 (2008-07-18)
 // By Nadia Heninger and Ariel Feldman
+// Hacked by Aidan Thornton to know more key schedules
+// With code from axTLS by Cameron Rich
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -131,6 +133,43 @@ static void print_progress(size_t percent)
     fprintf(stderr, "Keyfind progress: %zu%%\r", percent);
 }
 
+static unsigned char AES_xtime(uint32_t x)
+{
+	return (x&0x80) ? (x<<1)^0x1b : x<<1;
+}
+
+// converts a key schedule that's had InvMixColumn pre-applied
+// as an optimisation for decryption back to a normal key schedule
+static void unconvert_key(uint32_t *k, int rounds)
+{
+    int i;
+    uint32_t w, tmp1, old_a0, a0, a1, a2, a3;
+
+    k += 4;
+
+    for (i= rounds*4; i > 4; i--)
+    {
+        w= *k;
+
+	// note: a quirk of aeskeyfind is that the bytes are in
+	// reverse order within the word compared to normal AES
+	a3 = (uint32_t)((w>>24)&0xFF);
+	a2 = (uint32_t)((w>>16)&0xFF);
+	a1 = (uint32_t)((w>>8)&0xFF);
+	a0 = (uint32_t)(w&0xFF);
+
+	tmp1 = a0 ^ a1 ^ a2 ^ a3;
+	old_a0 = a0;
+	a0 ^= tmp1 ^ AES_xtime(a0 ^ a1);
+	a1 ^= tmp1 ^ AES_xtime(a1 ^ a2);
+	a2 ^= tmp1 ^ AES_xtime(a2 ^ a3);
+	a3 ^= tmp1 ^ AES_xtime(a3 ^ old_a0);
+
+	*k++ =  ((a3 << 24) | (a2 << 16) | (a1 << 8) | a0);
+    }
+}
+
+
 // The core key finding loop
 //
 // Searches for AES keys in memory image bmap with starting offsets up
@@ -171,6 +210,11 @@ static void find_keys(const uint8_t* bmap, size_t last)
         }
         if (xor_count_256 <= gThreshold)
             print_key(map,256,i);
+
+	uint32_t newmap[4*11];
+	memcpy(newmap, map, 4*11*sizeof(uint32_t));
+	map = newmap;
+	unconvert_key(map, 10);
 
         // Check distance from 128-bit AES key
         int xor_count_128 = 0;
