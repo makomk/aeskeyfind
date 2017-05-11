@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <errno.h>
+#include <string.h>
 
 extern char *optarg;
 extern int optind, opterr, optopt;
@@ -29,6 +30,10 @@ extern int optind, opterr, optopt;
 static long int gThreshold = DEFAULT_THRESHOLD;
 static int gVerbose = 0;
 static int gProgress = 1;
+
+#define TWEAK_INVMIXCOLUMN 0x1
+#define TWEAK_REVERSE_ORDER 0x2
+#define MAX_TWEAKS 0x4
 
 // Print a key, assuming the key schedule starts at map[0].  
 // num_bits should be 128 or 256 
@@ -138,8 +143,8 @@ static unsigned char AES_xtime(uint32_t x)
 	return (x&0x80) ? (x<<1)^0x1b : x<<1;
 }
 
-// converts a key schedule that's had InvMixColumn pre-applied
-// as an optimisation for decryption back to a normal key schedule
+// converts a key schedule that's had InvMixColumn pre-applied as
+// an optimisation for decryption back to a normal key schedule
 static void unconvert_key(uint32_t *k, int rounds)
 {
     int i;
@@ -188,6 +193,7 @@ static void find_keys(const uint8_t* bmap, size_t last)
         uint32_t* map = (uint32_t*)&(bmap[i]);
 
         // Check distance from 256-bit AES key
+	// FIXME: implement tweaks here too
         int xor_count_256 = 0;
         for (size_t row = 1; row < 8; row++) {
             for (size_t column = 0; column < 8; column++) {
@@ -211,29 +217,38 @@ static void find_keys(const uint8_t* bmap, size_t last)
         if (xor_count_256 <= gThreshold)
             print_key(map,256,i);
 
-	uint32_t newmap[4*11];
-	memcpy(newmap, map, 4*11*sizeof(uint32_t));
-	map = newmap;
-	unconvert_key(map, 10);
+	for(int tweaks = 0; tweaks < MAX_TWEAKS; tweaks++) {
+	    // Try various tweaks to how key schedule is storted
+	    uint32_t newmap[4*11];
+	    map = (uint32_t*)&(bmap[i]);
+	    if(tweaks & TWEAK_REVERSE_ORDER)
+		for (size_t row = 0; row < 11; row++)
+		    memcpy(newmap+4*row, map+4*(10-row), 4*sizeof(uint32_t));
+	    else
+		memcpy(newmap, map, 4*11*sizeof(uint32_t));
+	    map = newmap;
+	    if(tweaks & TWEAK_INVMIXCOLUMN)
+		unconvert_key(map, 10);
 
-        // Check distance from 128-bit AES key
-        int xor_count_128 = 0;
-        for (size_t row = 1; row < 11; row++) {
-            for (size_t column = 0; column < 4; column++) {
-                if (column == 0)
-                    xor_count_128 += popcount(key_core(map[4*row-1],row) ^
-                            map[4*(row-1)] ^
-                            map[4*row]);
-                else
-                    xor_count_128 += popcount((map[4*row + column-1] ^
-                            map[4*(row-1)+column]) ^
-                            map[4*row + column]);
-            }
-	    if (xor_count_128 > gThreshold)
-	      break;
-        }
-        if (xor_count_128 < gThreshold)
-            print_key(map,128,i);
+	    // Check distance from 128-bit AES key
+	    int xor_count_128 = 0;
+	    for (size_t row = 1; row < 11; row++) {
+		for (size_t column = 0; column < 4; column++) {
+		    if (column == 0)
+			xor_count_128 += popcount(key_core(map[4*row-1],row) ^
+						  map[4*(row-1)] ^
+						  map[4*row]);
+		    else
+			xor_count_128 += popcount((map[4*row + column-1] ^
+						   map[4*(row-1)+column]) ^
+						  map[4*row + column]);
+		}
+		if (xor_count_128 > gThreshold)
+		    break;
+	    }
+	    if (xor_count_128 < gThreshold)
+		print_key(map,128,i);
+	}
 
         if (gProgress) {
             size_t pct = (increment > 0) ? i / increment : i * 100 / last;
