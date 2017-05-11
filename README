@@ -32,6 +32,10 @@ skips blocks that have too many repeats.
 This method works even if several bits of the key schedule have been
 corrupted due to memory decay.
 
+This modified version of the original AESKeyFinder can additionally
+find key schedules whose entries are in reverse order or which have
+had InvMixColumn pre-applied for use by decryption code that uses
+this optimisation. (Currently only implemented for 128-bit keys.)
 
 USAGE:
 
