@@ -97,7 +97,7 @@ static void print_key(uint32_t* map, int num_bits, size_t address)
 // more than 8 repeats of any byte.  This is a primitive measure of
 // entropy, but it works well enough.  The function keeps track of a
 // sliding window of byte counts.
-static int entropy(const uint8_t* bmap, int i)
+static int entropy(const uint8_t* bmap, size_t i)
 {
     static int new_call = 1;
     static int byte_freq[256] = {0};
@@ -267,7 +267,7 @@ static void find_keys(const uint8_t* bmap, size_t last)
 
 // Memory maps filename and return a pointer on success, setting len
 // to the length of the file (does not return on error)
-unsigned char *map_file(char *filename, unsigned int *len) {
+unsigned char *map_file(char *filename, size_t *len) {
   int fd = open(filename, O_RDONLY);
   if (fd < 0)
     err(1, "image open failed");
@@ -324,7 +324,7 @@ int main(int argc, char * argv[])
         exit(1);
     }
 
-    unsigned int len;
+    size_t len;
     unsigned char *image = map_file(argv[0], &len);
     if (len < 240) {
         fprintf(stderr, "memory image too small\n");
